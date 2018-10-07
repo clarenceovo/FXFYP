@@ -65,16 +65,18 @@ def dataparsing():
     values[:,7] = dataencoder.fit_transform(values[:,7])
     datascaler = MinMaxScaler(feature_range=(0,1))
     parsed = datascaler.fit_transform(values)
-    print(parsed)
-    trainX = parsed[:int(0.7 * len(parsed))]  # 70% train ,30% Test
-    testX = parsed[int(0.7 * len(parsed)):]
-    trainY = parsed[:int(0.7 * len(parsed))]
-    testY = parsed[int(0.7 * len(parsed)):]
 
+    train = parsed[:int(0.7 * len(parsed)),:]  # 70% train ,30% Test
+    test = parsed[int(0.7 * len(parsed)):,:]
+    trainX ,trainY = train[:,:-1],train[:,-1]
+    testX, testY = test[:, :-1], test[:, -1]
+    trainX=trainX.reshape((trainX.shape[0],1,trainX.shape[1]))
+    testX = testX.reshape((testX.shape[0], 1, testX.shape[1]))
+    print (testX)
 def learning():
   global result
   model = Sequential()
-  model.add(LSTM(50,input_shape=(trainX.shape[1],trainX,shape[2]))) #50 Nodes
+  model.add(LSTM(50,input_shape=(trainX.shape[1],trainX.shape[2]))) #50 Nodes
   model.add(Dense(1,activation='sigmoid')) # Add one dense layer
   model.compile(loss='mae',optimizer='rmsprop')
   supervised = model.fit(trainX,trainY,epochs=100,batch_size=20,validation_data=(testX,testY) ,verbose=2 ,shuffle=False)
