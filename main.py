@@ -63,10 +63,10 @@ def dataparsing():
     datascaler = MinMaxScaler(feature_range=(0,1))
     parsed = datascaler.fit_transform(values)
     print(parsed)
-    trainX = tick[:int(0.7 * len(tick))]  # 70% train ,30% Test
-    testX = tick[int(0.7 * len(tick)):]
-    trainY = tick[:int(0.7 * len(tick))]
-    testY = tick[int(0.7 * len(tick)):]
+    trainX = parsed[:int(0.7 * len(parsed))]  # 70% train ,30% Test
+    testX = parsed[int(0.7 * len(parsed)):]
+    trainY = parsed[:int(0.7 * len(parsed))]
+    testY = parsed[int(0.7 * len(parsed)):]
 
 def learning():
   global result
