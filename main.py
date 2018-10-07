@@ -7,9 +7,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
-#from keras.models import Sequential
-#from keras.layers import Dense
-#from keras.layers import LSTM
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
 from talib import MA_Type
 
 def getdata():
@@ -49,9 +49,12 @@ def dataparsing():
         2. Split the data to test & train dataset (70:30)
 
         """
+    global trainX ,trainY , testX, testY
     time = tick['Date'] +' '+tick['Time'] #merge date and time
     time = time.apply (lambda x :dateutil.parser.parse(x)) #Parse the time to fit the transform
-    dataset = pd.DataFrame(data=[time,opprice, hiprice, lowprice, closeprice,bollupper,bollmiddle,bolllower,]).transpose()
+    time=time.values
+    dataset = pd.DataFrame(data=[time,opprice, hiprice, lowprice, closeprice,bollupper,bollmiddle,bolllower]).transpose()
+    print(dataset)
     dataset.columns=['Time','Open','High','Low','Close','BBUpper','BBMiddle','BBLower']
     dataset.dropna(inplace=True) # move NA dataset
     values = dataset.values
@@ -59,20 +62,19 @@ def dataparsing():
     values[:,7] = dataencoder.fit_transform(values[:,7])
     datascaler = MinMaxScaler(feature_range=(0,1))
     parsed = datascaler.fit_transform(values)
-    print (parsed)
+    print(parsed)
     trainX = tick[:int(0.7 * len(tick))]  # 70% train ,30% Test
     testX = tick[int(0.7 * len(tick)):]
     trainY = tick[:int(0.7 * len(tick))]
     testY = tick[int(0.7 * len(tick)):]
 
 def learning():
-    """
-    1. Build Seq model
-    2. Use LSTM cell / ReLU cell (both will be tested)
-    3. Set learning rate
-    4. Record the RMSE score
-        """
-    return 0
+  global result
+  model = Sequential()
+  model.add(LSTM(50,input_shape=(trainX.shape[1],trainX,shape[2]))) #50 Nodes
+  model.add(Dense(1,activation='sigmoid')) # Add one dense layer
+  model.compile(loss='mae',optimizer='rmsprop')
+  supervised = model.fit(trainX,trainY,epochs=100,batch_size=20,validation_data=(testX,testY) ,verbose=2 ,shuffle=False)
 
 def data_vis():
     """
@@ -92,6 +94,6 @@ if __name__ == '__main__':
     """
     getdata()
     candle_baranalysis()
-    technical_analysis()
+   # technical_analysis()
     dataparsing()
     learning()
