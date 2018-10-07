@@ -43,6 +43,9 @@ def technical_analysis():
     macd = talib.MACD(opprice) #MACD
     #print (macd)
     print ('INFO: Technical Parameters is calculated')
+def data_timeshift():
+
+    return 0
 def dataparsing():
     """
         1. Create data set
