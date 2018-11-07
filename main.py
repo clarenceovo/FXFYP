@@ -11,6 +11,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 #from talib import MA_Type
+
 import math
 def getdata():
     global tick
@@ -45,61 +46,72 @@ def traceback(data,look_back=1):
         dataY.append(data[i + look_back])
     return np.array(dataX), np.array(dataY)
 
+def create_dataset(dataset, look_back):
+	dataX, dataY = [], []
+	for i in range(len(dataset)-look_back-1):
+		a = dataset[i:(i+look_back), 0]
+		dataX.append(a)
+		dataY.append(dataset[i + look_back, 0])
+	return np.array(dataX), np.array(dataY)
+
+
+
 def parsing_learning():
-    global trainX ,trainY , testX, testY
+    global trainX ,trainY , testX, testY ,look_back ,trainPredict , testPredict, scaler ,benchmark
     time = tick['Date'] +' '+tick['Time'] #merge date and time
     time = time.apply (lambda x :dateutil.parser.parse(x)) #Parse the time to fit the transform
     time=time.values
-    dataset = pd.DataFrame(data=[opprice, hiprice, lowprice, closeprice]).transpose()
-    dataset.columns=['Open','High','Low','Close']
-    dataset.dropna(inplace=True) # move NA dataset
-    #print(dataset)
-    benchmark = dataset['Open'].values
-    #benchmark = benchmark.astype('float')
-    print (benchmark)
-    #testsize = len(benchmark)-trainsize
-    #scaler =MinMaxScaler(0,1)
-    #set = scaler.fit_transform(benchmark)
-    trainsize = len(benchmark) * 0.7
-    train = set[0:trainsize]
-    test = set[trainsize:len(benchmark)]
-    trainX,trainY = traceback(train,1)
-    testX , testY = traceback(test,1)
-    #print(trainX)
-    #print(trainY) #t+1
-    trainX  = np.reshape(trainX,(trainX.shape[0],1,trainX.shape[1]))
-    testX = np.reshape(testX,(testX.shape[0],1,testX.shape[1]))
-    """
-    values = dataset.values
-    dataencoder = LabelEncoder()
-    values[:,6] = dataencoder.fit_transform(values[:,6])
-    datascaler = MinMaxScaler(feature_range=(0,1))
-    parsed = datascaler.fit_transform(values)
-    """
-    #train = parsed[:int(0.7 * len(parsed)),:]  # 70% train ,30% Test
-    #test = parsed[int(0.7 * len(parsed)):,:]
-    #trainX ,trainY = train[:,:-1],train[:,-1]
-    #testX, testY = test[:, :-1], test[:, -1]
-    #trainX=trainX.reshape((trainX.shape[0],1,trainX.shape[1]))
-    #testX = testX.reshape((testX.shape[0], 1, testX.shape[1]))
-    print('INFO:The dataset is parsed')
-    global result , prediction
+    #dataset = pd.DataFrame(data=[opprice, hiprice, lowprice, closeprice]).transpose()
+    #dataset.columns=['Open','High','Low','Close']
+    dataset = pd.DataFrame(data=opprice)
+    dataset.dropna(inplace=True) # move empty dataset
+    benchmark = dataset.values #dataset
+    n = benchmark.shape[0]
+    p = benchmark.shape[1]
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    benchmark = scaler.fit_transform(benchmark)
+    train_size = int(len(benchmark) * 0.67)
+    test_size = len(benchmark) - train_size
+    train = benchmark[0:train_size, :]
+    test=benchmark[train_size:len(benchmark), :]
+    look_back = 6 #look back 6 hours
+    trainX, trainY = create_dataset(train, look_back)
+    testX, testY = create_dataset(test, look_back)
+    trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
+    testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
     model = Sequential()
-    model.add(LSTM(4,input_shape=(1,1)))
-    model.add(Dense(1))# Add one dense layer
-    model.compile(loss='mse',optimizer='rmsprop')
-    model.fit(trainX,trainY,epochs=100,batch_size=100,verbose=2 )
-    trainprediction = model.predict(testX)
-    testprediction = model.predict(testX)
-    #trainprediction = scaler.inverse_transform(trainprediction)
-    #trainY=scaler.inverse_transform([trainY])
-    #testprediction=scaler.inverse_transform(testprediction)
-    #testY=scaler.inverse_transform([testY])
-    trainScore = math.sqrt(mean_squared_error(trainY[0], trainprediction[:, 0]))
+    model.add(LSTM(4, input_shape=(1, look_back)))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.fit(trainX, trainY, epochs=100, batch_size=100, verbose=2)
+    trainPredict = model.predict(trainX)
+    testPredict = model.predict(testX)
+    # invert predictions
+    trainPredict = scaler.inverse_transform(trainPredict)
+    trainY = scaler.inverse_transform([trainY])
+    testPredict = scaler.inverse_transform(testPredict)
+    testY = scaler.inverse_transform([testY])
+    # calculate root mean squared error
+    trainScore = math.sqrt(mean_squared_error(trainY[0], trainPredict[:, 0]))
     print('Train Score: %.2f RMSE' % (trainScore))
-    testScore = math.sqrt(mean_squared_error(testY[0], testprediction[:, 0]))
+    testScore = math.sqrt(mean_squared_error(testY[0], testPredict[:, 0]))
     print('Test Score: %.2f RMSE' % (testScore))
 ##Main Loop##
+
+def data_visual():
+
+    trainPredictPlot = np.empty_like(benchmark)
+    trainPredictPlot[:, :] = np.nan
+    trainPredictPlot[look_back:len(trainPredict) + look_back, :] = trainPredict
+    # shift test predictions for plotting
+    testPredictPlot = np.empty_like(benchmark)
+    testPredictPlot[:, :] = np.nan
+    testPredictPlot[len(trainPredict) + (look_back * 2) + 1:len(benchmark) - 1, :] = testPredict
+    # plot baseline and predictions
+    plt.plot(scaler.inverse_transform(benchmark))
+    plt.plot(trainPredictPlot)
+    plt.plot(testPredictPlot)
+    plt.show()
 if __name__ == '__main__':
     """
     1. Read Data
@@ -111,3 +123,4 @@ if __name__ == '__main__':
     candle_baranalysis()
    # technical_analysis()
     parsing_learning()
+    data_visual()
