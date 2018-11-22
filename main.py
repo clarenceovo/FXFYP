@@ -3,24 +3,25 @@ import numpy as np
 import dateutil.parser
 import matplotlib.pyplot as plt
 #import talib
-from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
+from keras.layers import RNN
 #from talib import MA_Type
-
 import math
 def getdata():
-    global tick
-    global cftc
+    global tick ,cftc , us_home_sale, us_nonfarm_payroll
     tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/USDJPYH4(2016-2017).csv',usecols=[0,1,2,3,4,5]) # Tick Data H4, from 2016-01-01 to 2017-12-31
-    cftc= pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/CFTC-097741_FO_ALL_CR.csv',usecols=[0,1,2,3,4,5,6,]) # CTFC Report on Future and Option Position Data
-    #print(cftc)
+    cftc= pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/CFTC-097741_FO_ALL_CR.csv',usecols=[0,1,2,3,4,5,6]) # CTFC Report on Future and Option Position Data ,2nd feature
+    us_home_sale = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NEW_HOME_SALE(2016-2017).csv',usecols=[0,1,2,3]) #3rd param
+    us_nonfarm_payroll = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NONFARM_PAYROLL(2016-2017).csv',usecols=[0,1,2,3]) #4th param
+    print(us_home_sale)
+    print(us_nonfarm_payroll)
     tick=tick.drop_duplicates(keep=False)
-    print('INFO:Tick data is extracted successfully')
+    print('INFO:All data is extracted successfully')
     #get date ,time ,open ,high ,low and close data
 
 def candle_baranalysis():
@@ -68,49 +69,50 @@ def parsing_learning():
     benchmark = dataset.values #dataset
     n = benchmark.shape[0]
     p = benchmark.shape[1]
-    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaler = MinMaxScaler()
     benchmark = scaler.fit_transform(benchmark)
     train_size = int(len(benchmark) * 0.67)
     test_size = len(benchmark) - train_size
     train = benchmark[0:train_size, :]
     test=benchmark[train_size:len(benchmark), :]
-    look_back = 6 #look back 6 hours
+    look_back = 2 #look back 8 hours
     trainX, trainY = create_dataset(train, look_back)
     testX, testY = create_dataset(test, look_back)
     trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
     testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
     model = Sequential()
-    model.add(LSTM(32, input_shape=(1, look_back)))
+    model.add(LSTM(16, input_shape=(1, look_back)))
     model.add(Dense(1))
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(trainX, trainY, epochs=100, batch_size=100, verbose=2)
+    model.fit(trainX, trainY, epochs=200, batch_size=50, verbose=0)
     trainPredict = model.predict(trainX)
     testPredict = model.predict(testX)
-    # invert predictions
+    print(model.summary())
+    #score =model.evaluate(trainX,trainY)
+    #print(f'SCORE:{score}')
     trainPredict = scaler.inverse_transform(trainPredict)
     trainY = scaler.inverse_transform([trainY])
     testPredict = scaler.inverse_transform(testPredict)
     testY = scaler.inverse_transform([testY])
     # calculate root mean squared error
-    trainScore = math.sqrt(mean_squared_error(trainY[0], trainPredict[:, 0]))
-    print('Train Score: %.2f RMSE' % (trainScore))
-    testScore = math.sqrt(mean_squared_error(testY[0], testPredict[:, 0]))
-    print('Test Score: %.2f RMSE' % (testScore))
-##Main Loop##
-
+    #trainScore = math.sqrt(mean_squared_error(trainY, trainPredict))
+    #print('Train Score: %.2f RMSE' % (trainScore))
+    #testScore = math.sqrt(mean_squared_error(testY, testPredict))
+    #print('Test Score: %.2f RMSE' % (testScore))
 def data_visual():
 
     trainPredictPlot = np.empty_like(benchmark)
     trainPredictPlot[:, :] = np.nan
     trainPredictPlot[look_back:len(trainPredict) + look_back, :] = trainPredict
-    # shift test predictions for plotting
     testPredictPlot = np.empty_like(benchmark)
     testPredictPlot[:, :] = np.nan
     testPredictPlot[len(trainPredict) + (look_back * 2) + 1:len(benchmark) - 1, :] = testPredict
     # plot baseline and predictions
-    plt.plot(scaler.inverse_transform(benchmark))
-    plt.plot(trainPredictPlot)
-    plt.plot(testPredictPlot)
+    plt.plot(scaler.inverse_transform(benchmark),label='USDJPY Actual Price')
+    plt.plot(trainPredictPlot,label='Train Prediction')
+    plt.plot(testPredictPlot,label='Test Prediction')
+    plt.title('USDJPY H1 Prediction')
+    plt.legend()
     plt.show()
 if __name__ == '__main__':
     """
@@ -120,7 +122,7 @@ if __name__ == '__main__':
     4. Model evaluation and data visualisation 
     """
     getdata()
-    candle_baranalysis()
+    #candle_baranalysis()
    # technical_analysis()
-    parsing_learning()
-    data_visual()
+    #parsing_learning()
+    #data_visual()
