@@ -2,24 +2,29 @@ import pandas as pd
 import numpy as np
 import dateutil.parser
 import matplotlib.pyplot as plt
-#import talib
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
-from keras.layers import RNN
-#from talib import MA_Type
-import math
+from datetime import datetime
+from talib import MA_Type
+import talib
 def getdata():
     global tick ,cftc , us_home_sale, us_nonfarm_payroll
     tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/USDJPYH4(2016-2017).csv',usecols=[0,1,2,3,4,5]) # Tick Data H4, from 2016-01-01 to 2017-12-31
-    cftc= pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/CFTC-097741_FO_ALL_CR.csv',usecols=[0,1,2,3,4,5,6]) # CTFC Report on Future and Option Position Data ,2nd feature
-    us_home_sale = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NEW_HOME_SALE(2016-2017).csv',usecols=[0,1,2,3]) #3rd param
-    us_nonfarm_payroll = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NONFARM_PAYROLL(2016-2017).csv',usecols=[0,1,2,3]) #4th param
-    print(us_home_sale)
-    print(us_nonfarm_payroll)
+    """
+    We are not deal with multiple time lag problem in this stage
+    """
+    #cftc= pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/CFTC-097741_FO_ALL_CR.csv',usecols=[0,5,6]) # CTFC Report on Future and Option Position Data ,2nd feature
+    #print(cftc)
+    #us_home_sale = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NEW_HOME_SALE(2016-2017).csv',usecols=[0,1]) #3rd param
+    #us_home_sale['Date'] = us_home_sale['Date'].apply(lambda y: datetime.strptime(y,'%d-%b-%y')) #convert to datetime object
+    #us_home_sale['Actual'] = us_home_sale['Actual'].apply(lambda y: int(y.strip('K'))*1000) #conver to K to int object
+    #us_nonfarm_payroll = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NONFARM_PAYROLL(2016-2017).csv',usecols=[0,1]) #4th param
+    #us_nonfarm_payroll['Date'] = us_nonfarm_payroll['Date'].apply(lambda y: datetime.strptime(y, '%d-%b-%y')) #convert to datetime object
+    #us_nonfarm_payroll['Actual'] = us_nonfarm_payroll['Actual'].apply(lambda y: int(y.strip('K')) * 1000)
     tick=tick.drop_duplicates(keep=False)
     print('INFO:All data is extracted successfully')
     #get date ,time ,open ,high ,low and close data
@@ -31,13 +36,19 @@ def candle_baranalysis():
     lowprice=tick['Low'].astype(float).values
     closeprice=tick['Close'].astype(float).values
     #create different array for pattern analusis using TA lib
-    #bollupper,bollmiddle,bolllower = talib.BBANDS(closeprice,matype=MA_Type.T3) #make BB Band using Close Price
+    bollupper,bollmiddle,bolllower = talib.BBANDS(closeprice,nbdevup=2, nbdevdn=2,matype=MA_Type.T3) #make BB Band using Close Price
     print('INFO:Candle Parameters is created')
 def technical_analysis():
-
-   # global macd
-    #macd = talib.MACD(opprice) #MACD
-    ##print (macd)
+    global sma_5, sma_20, sma_50 ,sma_120 , ATR_20
+    sma_5 = talib.SMA(opprice, timeperiod=5)
+    sma_20 = talib.SMA(opprice , timeperiod=20)
+    #sma_50 = talib.SMA(opprice, timeperiod=50)
+    #sma_120= talib.SMA(opprice, timeperiod=120)
+    #add the the gradient of SMA
+    ATR_20 =talib.ATR(hiprice,lowprice,closeprice,timeperiod=20) #todayATR = atr[-1]
+    RSI_14 = talib.RSI(closeprice,14)
+    print(ATR_20)
+    print(RSI_14)
     print ('INFO: Technical Parameters is calculated')
 def traceback(data,look_back=1):
     dataX, dataY = [], []
@@ -81,10 +92,10 @@ def parsing_learning():
     trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
     testX = np.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
     model = Sequential()
-    model.add(LSTM(16, input_shape=(1, look_back)))
+    model.add(LSTM(16, input_shape=(1, look_back))) #need stacked LSTM network? Eg Two LSTM layers
     model.add(Dense(1))
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(trainX, trainY, epochs=200, batch_size=50, verbose=0)
+    model.fit(trainX, trainY, epochs=200, batch_size=50, verbose=1)
     trainPredict = model.predict(trainX)
     testPredict = model.predict(testX)
     print(model.summary())
@@ -111,7 +122,12 @@ def data_visual():
     plt.plot(scaler.inverse_transform(benchmark),label='USDJPY Actual Price')
     plt.plot(trainPredictPlot,label='Train Prediction')
     plt.plot(testPredictPlot,label='Test Prediction')
-    plt.title('USDJPY H1 Prediction')
+    plt.plot(bollupper, label='Upper BB Band')
+    plt.plot(bolllower, label='Lower BB Band')
+    plt.plot(sma_20, label='SMA(20)')
+    #plt.plot(sma_50, label='SMA(50)')
+    #plt.plot(sma_120, label='SMA(120)')
+    plt.title('USDJPY H4 Prediction')
     plt.legend()
     plt.show()
 if __name__ == '__main__':
@@ -122,7 +138,7 @@ if __name__ == '__main__':
     4. Model evaluation and data visualisation 
     """
     getdata()
-    #candle_baranalysis()
-   # technical_analysis()
-    #parsing_learning()
-    #data_visual()
+    candle_baranalysis()
+    technical_analysis()
+    parsing_learning()
+    data_visual()
