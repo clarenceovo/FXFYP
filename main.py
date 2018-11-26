@@ -3,18 +3,23 @@ import numpy as np
 import dateutil.parser
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-#from sklearn.preprocessing import LabelEncoder
+#plotly
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense ,Dropout ,Activation ,Input
 from keras.layers import LSTM
 from datetime import datetime
 from talib import MA_Type
 import talib
+import math
+from scipy.misc import derivative
 def getdata():
     global tick ,cftc , us_home_sale, us_nonfarm_payroll
-    tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/USDJPYH4(2016-2017).csv',usecols=[0,1,2,3,4,5]) # Tick Data H4, from 2016-01-01 to 2017-12-31
+    tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/USDJPY60.csv',usecols=[0,1,2,3,4,5])
+    tick.columns = ['Date','Time','Open','High','Low','Close']
+    tick['Date']=tick['Date'].apply(lambda y: datetime.strptime(y,'%Y.%m.%d'))
+    tick=tick[(tick['Date'].dt.year >=2015)] #data range(2011-2018)
+    #print(tick)
     """
     We are not deal with multiple time lag problem in this stage
     #cftc= pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/CFTC-097741_FO_ALL_CR.csv',usecols=[0,5,6]) # CTFC Report on Future and Option Position Data ,2nd feature
@@ -29,43 +34,21 @@ def getdata():
     tick=tick.drop_duplicates(keep=False)
     print('INFO:All data is extracted successfully')
 def candle_baranalysis():
-    global opprice , hiprice , lowprice ,closeprice , dataset, bollupper,bollmiddle,bolllower
+    global opprice , hiprice , lowprice ,closeprice , dataset, bollupper,bollmiddle,bolllower , avg_price
     opprice=tick['Open'].astype(float).values
     hiprice=tick['High'].astype(float).values
     lowprice=tick['Low'].astype(float).values
     closeprice=tick['Close'].astype(float).values
+    avg_price = talib.AVGPRICE(opprice, hiprice, lowprice, closeprice)
     #create different array for pattern analusis using TA lib
     bollupper,bollmiddle,bolllower = talib.BBANDS(closeprice,nbdevup=2, nbdevdn=2,matype=MA_Type.T3) #make BB Band using Close Price
     print('INFO:Candle Parameters is created')
 def technical_analysis():
-    global sma_5, sma_20, sma_50 ,sma_120 , ATR_20 ,RSI_14
-    sma_5 = talib.SMA(opprice, timeperiod=5)
-    sma_20 = talib.SMA(opprice , timeperiod=20)
-    #sma_50 = talib.SMA(opprice, timeperiod=50)
-    #sma_120= talib.SMA(opprice, timeperiod=120)
-    #add the the gradient of SMA
-    ATR_20 =talib.ATR(hiprice,lowprice,closeprice,timeperiod=20) #todayATR = atr[-1]
-    RSI_14 = talib.RSI(closeprice,14)
-    #print(ATR_20)
-    #print(RSI_14)
+    global sma_5, sma_24, sma_50 ,sma_240 , ATR ,RSI
+    sma_240 = talib.SMA(opprice, timeperiod=240) #sma_240 = 10 Days Avg
+    ATR =talib.ATR(hiprice,lowprice,closeprice,timeperiod=24)
+    RSI = talib.RSI(closeprice,120)
     print ('INFO: Technical Parameters is calculated')
-"""
-def traceback(data,look_back=1):
-    dataX, dataY = [], []
-    for i in range(len(data) - look_back - 1):
-        a = data[i:(i + look_back)]
-        dataX.append(a)
-        dataY.append(data[i + look_back])
-    return np.array(dataX), np.array(dataY)
-
-def create_dataset(dataset, look_back):
-	dataX, dataY = [], []
-	for i in range(len(dataset)-look_back-1):
-		a = dataset[i:(i+look_back), 0]
-		dataX.append(a)
-		dataY.append(dataset[i + look_back, 0])
-	return np.array(dataX), np.array(dataY)
-"""
 def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
 	n_vars = 1 if type(data) is list else data.shape[1]
 	df = pd.DataFrame(data)
@@ -90,22 +73,19 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
 	return agg
 
 def parsing_learning():
-    global trainX ,trainY , testX, testY ,look_back ,trainPredict , testPredict, scaler ,dataset
+    global trainX ,trainY , testX, testY ,look_back ,trainPredict , testPredict, scaler ,dataset ,epoch,batch ,dropout ,history
     look_back =1
-    time = tick['Date'] +' '+tick['Time'] #merge date and time
-    time = time.apply (lambda x :dateutil.parser.parse(x)) #Parse the time to fit the transform
-    time=time.values
-    dataset = pd.DataFrame(data=[opprice, sma_5,sma_20 ,bollupper,bolllower, ATR_20,RSI_14 ]).transpose()
-    dataset.columns=['Price','SMA5','SMA20','BBupper','BBLower','ATR','RSI'] #NAMING COLUMN
+    dataset = pd.DataFrame(data=[avg_price, sma_240, bollupper,bollmiddle, bolllower, ATR, RSI]).transpose()
+    dataset.columns = ['avg_price', 'SMA240', 'BBupper', 'BBMiddle' ,'BBLower', 'ATR', 'RSI']  # NAMING COLUMN
     dataset.dropna(inplace=True)
     data = dataset.values
     data = data.astype('float32')
     scaler = MinMaxScaler(feature_range=(0, 1))
     data = scaler.fit_transform(data)
     data=series_to_supervised(data,1,1)
-    data.drop(data.columns[[8,9, 10, 11, 12, 13 ]], axis=1, inplace=True)
+    data.drop(data.columns[[8, 9, 10, 11, 12, 13]], axis=1, inplace=True)
     data = data.values #DF to list
-    train_size = int(len(data)*0.7) #70% train ,30% test
+    train_size = int(len(data)*0.8) #60% train ,40% test
     trainset = data[:train_size, :]
     testset = data[train_size:, :]
     trainX, trainY = trainset[:, :-1], trainset[:, -1]
@@ -113,45 +93,56 @@ def parsing_learning():
     trainX = trainX.reshape((trainX.shape[0], 1, trainX.shape[1]))
     testX = testX.reshape((testX.shape[0], 1, testX.shape[1]))
     model = Sequential()
-    model.add(LSTM(48, input_shape=(trainX.shape[1], trainX.shape[2]))) #need stacked LSTM network? Eg Two LSTM layers
-    model.add(Dense(1))
-    model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(trainX, trainY, epochs=10, batch_size=50, verbose=2)
+    epoch=20
+    batch=120
+    dropout=0.6
+    model.add(LSTM(64, return_sequences=True, input_shape=(trainX.shape[1], trainX.shape[2]))) #need stacked LSTM network? Eg Two LSTM layers
+    model.add(LSTM(64))
+    model.add(Dropout(dropout))
+    model.add(Dense(1, kernel_initializer='normal', activation='relu'))
+    model.compile(loss='mean_squared_error', optimizer='adam',metrics=['mse', 'mae', 'mape'])
+    history =model.fit(trainX, trainY, epochs=epoch, batch_size=batch, verbose=2,shuffle=False)
     trainPredict = model.predict(trainX)
     trainX = trainX.reshape((trainX.shape[0], trainX.shape[2]))  # reshape the data
     trainresult = np.concatenate((trainPredict, trainX[:, 1:]), axis=1)
+    trainScore = math.sqrt(mean_squared_error(trainY, trainPredict))
+    print('Train Score: %.2f RMSE' % (trainScore))
+    #calculate the SD SCORE
     trainresult = scaler.inverse_transform(trainresult)
     trainPredict = trainresult[:, 0]
-
     testPredict = model.predict(testX)
     testX = testX.reshape((testX.shape[0], testX.shape[2]))  #reshape the data
     testresult = np.concatenate((testPredict, testX[:, 1:]), axis=1)
+    testScore = math.sqrt(mean_squared_error(testY, testPredict))
+    print('Test Score: %.2f RMSE' % (testScore))
     testresult  = scaler.inverse_transform(testresult)
     testPredict = testresult[:,0]
     # calculate root mean squared error
-    #trainScore = math.sqrt(mean_squared_error(trainY, trainPredict))
-    #print('Train Score: %.2f RMSE' % (trainScore))
-    #testScore = math.sqrt(mean_squared_error(testY, testPredict))
-    #print('Test Score: %.2f RMSE' % (testScore))
-
+    trainScore = math.sqrt(mean_squared_error(trainY, trainPredict))
+    print('Train Score: %.2f RMSE' % (trainScore))
+    testScore = math.sqrt(mean_squared_error(testY, testPredict))
+    print('Test Score: %.2f RMSE' % (testScore))
+    #"""
 def data_visual():
-    dataprice =dataset['Price'].values
-    trainPredictPlot = np.empty((dataprice.shape[0],1))
+
+    trainPredictPlot = np.empty((avg_price.shape[0],1))
     trainPredictPlot[:, :] = np.nan
-    trainPredictPlot[look_back:len(trainPredict) + look_back,:] = trainPredict.reshape((trainPredict.shape[0],1))
-    testPredictPlot = np.empty((dataprice.shape[0],1))
+    trainPredictPlot[look_back+239:len(trainPredict) + look_back+239,:] = trainPredict.reshape((trainPredict.shape[0],1))
+    testPredictPlot = np.empty((avg_price.shape[0],1))
     testPredictPlot[:, :] = np.nan
-    print(f'SHAPE OF Plot:{trainPredictPlot.shape}')
-    print(f'SHAPE OF Train:{trainPredict.shape}')
-    print(f'SHAPE OF TEST:{testPredict.shape}')
-    testPredictPlot[len(trainPredict) + look_back  :,:] = testPredict.reshape((testPredict.shape[0],1))
-    plt.plot(dataprice,label='USDJPY Actual Price')
+    testPredictPlot[len(trainPredict) + look_back +239 :len(avg_price) ,:] = testPredict.reshape((testPredict.shape[0],1))
+    plt.plot(avg_price,label='USDJPY Actual Price')
     plt.plot(trainPredictPlot,label='Train Prediction')
     plt.plot(testPredictPlot,label='Test Prediction')
-    #plt.plot(bollupper, label='Upper BB Band')
-    #plt.plot(bolllower, label='Lower BB Band')
-    plt.title('USDJPY H4 Prediction(Multivariate)')
+    plt.title('USDJPY H1 Prediction(Multivariate)')
+
+    #plt.plot(history.history['mean_squared_error'], label='mean_squared_error')
+    #plt.plot(history.history['mean_absolute_error'], label='mean_absolute_error')
+    #plt.plot(history.history['mean_absolute_percentage_error'], label='mean_squared_error')
+    #plt.title('Model Performance')
     plt.legend()
+
+    #plt.savefig(f'C:/Users/LokFung/Desktop/IERGYr4/IEFYP/PLT_IMAGE/E{epoch}B{batch}DROP{dropout}.png')
     plt.show()
 if __name__ == '__main__':
     """
