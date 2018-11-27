@@ -1,12 +1,12 @@
 import pandas as pd
 import numpy as np
-import dateutil.parser
+
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-#plotly
+from keras import regularizers
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
-from keras.layers import Dense ,Dropout ,Activation ,Input
+from keras.layers import Dense ,Dropout ,Activation ,Input , TimeDistributed
 from keras.layers import LSTM
 from datetime import datetime
 from talib import MA_Type
@@ -15,9 +15,9 @@ import math
 from scipy.misc import derivative
 def getdata():
     global tick ,cftc , us_home_sale, us_nonfarm_payroll
-    tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/USDJPY60.csv',usecols=[0,1,2,3,4,5])
-    tick.columns = ['Date','Time','Open','High','Low','Close']
-    tick['Date']=tick['Date'].apply(lambda y: datetime.strptime(y,'%Y.%m.%d'))
+    tick = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/AUDUSD60.csv',usecols=[0,1,2,3,4,5],skiprows=1)
+    tick.columns = ['Date','Open','High','Low','Close','Volumn']
+    tick['Date']=tick['Date'].apply(lambda y: datetime.strptime(y,'%d.%m.%Y %H:%M:%S.000'))
     tick=tick[(tick['Date'].dt.year >=2015)] #data range(2011-2018)
     #print(tick)
     """
@@ -26,13 +26,14 @@ def getdata():
     #print(cftc)
     #us_home_sale = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NEW_HOME_SALE(2016-2017).csv',usecols=[0,1]) #3rd param
     #us_home_sale['Date'] = us_home_sale['Date'].apply(lambda y: datetime.strptime(y,'%d-%b-%y')) #convert to datetime object
-    #us_home_sale['Actual'] = us_home_sale['Actual'].apply(lambda y: int(y.strip('K'))*1000) #conver to K to int object
+    us_home_sale['Actual'] = us_home_sale['Actual'].apply(lambda y: int(y.strip('K'))*1000) #conver to K to int object
     #us_nonfarm_payroll = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NONFARM_PAYROLL(2016-2017).csv',usecols=[0,1]) #4th param
     #us_nonfarm_payroll['Date'] = us_nonfarm_payroll['Date'].apply(lambda y: datetime.strptime(y, '%d-%b-%y')) #convert to datetime object
     #us_nonfarm_payroll['Actual'] = us_nonfarm_payroll['Actual'].apply(lambda y: int(y.strip('K')) * 1000)
     """
     tick=tick.drop_duplicates(keep=False)
     print('INFO:All data is extracted successfully')
+    us_home_sale['Actual'] = us_home_sale['Actual'].apply( lambda y: int(y.strip('K')) * 1000)  # conver to K to int object
 def candle_baranalysis():
     global opprice , hiprice , lowprice ,closeprice , dataset, bollupper,bollmiddle,bolllower , avg_price
     opprice=tick['Open'].astype(float).values
@@ -75,17 +76,17 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
 def parsing_learning():
     global trainX ,trainY , testX, testY ,look_back ,trainPredict , testPredict, scaler ,dataset ,epoch,batch ,dropout ,history
     look_back =1
-    dataset = pd.DataFrame(data=[avg_price, sma_240, bollupper,bollmiddle, bolllower, ATR, RSI]).transpose()
-    dataset.columns = ['avg_price', 'SMA240', 'BBupper', 'BBMiddle' ,'BBLower', 'ATR', 'RSI']  # NAMING COLUMN
+    dataset = pd.DataFrame(data=[avg_price, sma_240, bollupper,bollmiddle, bolllower, ATR]).transpose()
+    dataset.columns = ['avg_price', 'SMA240', 'BBupper', 'BBMiddle' ,'BBLower', 'ATR']  # NAMING COLUMN
     dataset.dropna(inplace=True)
     data = dataset.values
     data = data.astype('float32')
     scaler = MinMaxScaler(feature_range=(0, 1))
     data = scaler.fit_transform(data)
     data=series_to_supervised(data,1,1)
-    data.drop(data.columns[[8, 9, 10, 11, 12, 13]], axis=1, inplace=True)
+    data.drop(data.columns[[7,8, 9, 10, 11]], axis=1, inplace=True)
     data = data.values #DF to list
-    train_size = int(len(data)*0.8) #60% train ,40% test
+    train_size = int(len(data)*0.7) #70% train ,30% test
     trainset = data[:train_size, :]
     testset = data[train_size:, :]
     trainX, trainY = trainset[:, :-1], trainset[:, -1]
@@ -93,15 +94,20 @@ def parsing_learning():
     trainX = trainX.reshape((trainX.shape[0], 1, trainX.shape[1]))
     testX = testX.reshape((testX.shape[0], 1, testX.shape[1]))
     model = Sequential()
-    epoch=20
-    batch=120
+    epoch=200
+    batch=1000
     dropout=0.6
-    model.add(LSTM(64, return_sequences=True, input_shape=(trainX.shape[1], trainX.shape[2]))) #need stacked LSTM network? Eg Two LSTM layers
-    model.add(LSTM(64))
+    model.add(Dense(128, kernel_initializer='normal', activation='relu',input_shape=(trainX.shape[1], trainX.shape[2])))
     model.add(Dropout(dropout))
+    model.add(LSTM(64,recurrent_activation=
+                   'relu', return_sequences=True)) #need stacked LSTM network? Eg Two LSTM layers
+    model.add(Dropout(dropout))
+    model.add(LSTM(64,return_sequences=True))
+    model.add(Dropout(dropout))
+    model.add(LSTM(16))
     model.add(Dense(1, kernel_initializer='normal', activation='relu'))
     model.compile(loss='mean_squared_error', optimizer='adam',metrics=['mse', 'mae', 'mape'])
-    history =model.fit(trainX, trainY, epochs=epoch, batch_size=batch, verbose=2,shuffle=False)
+    history =model.fit(trainX, trainY, epochs=epoch, batch_size=batch, verbose=2,shuffle=True)
     trainPredict = model.predict(trainX)
     trainX = trainX.reshape((trainX.shape[0], trainX.shape[2]))  # reshape the data
     trainresult = np.concatenate((trainPredict, trainX[:, 1:]), axis=1)
@@ -124,25 +130,22 @@ def parsing_learning():
     print('Test Score: %.2f RMSE' % (testScore))
     #"""
 def data_visual():
-
     trainPredictPlot = np.empty((avg_price.shape[0],1))
     trainPredictPlot[:, :] = np.nan
     trainPredictPlot[look_back+239:len(trainPredict) + look_back+239,:] = trainPredict.reshape((trainPredict.shape[0],1))
     testPredictPlot = np.empty((avg_price.shape[0],1))
     testPredictPlot[:, :] = np.nan
     testPredictPlot[len(trainPredict) + look_back +239 :len(avg_price) ,:] = testPredict.reshape((testPredict.shape[0],1))
-    plt.plot(avg_price,label='USDJPY Actual Price')
+    plt.plot(avg_price,label='AUDUSD Actual Price')
     plt.plot(trainPredictPlot,label='Train Prediction')
     plt.plot(testPredictPlot,label='Test Prediction')
-    plt.title('USDJPY H1 Prediction(Multivariate)')
-
+    plt.title('AUDUSD H1 Prediction(Multivariate)')
     #plt.plot(history.history['mean_squared_error'], label='mean_squared_error')
     #plt.plot(history.history['mean_absolute_error'], label='mean_absolute_error')
     #plt.plot(history.history['mean_absolute_percentage_error'], label='mean_squared_error')
     #plt.title('Model Performance')
     plt.legend()
-
-    #plt.savefig(f'C:/Users/LokFung/Desktop/IERGYr4/IEFYP/PLT_IMAGE/E{epoch}B{batch}DROP{dropout}.png')
+    plt.savefig(f'C:/Users/LokFung/Desktop/IERGYr4/IEFYP/PLT_IMAGE/GBPUSD60.png')
     plt.show()
 if __name__ == '__main__':
     """
