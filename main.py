@@ -26,6 +26,7 @@ def getdata():
     #print(cftc)
     #us_home_sale = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NEW_HOME_SALE(2016-2017).csv',usecols=[0,1]) #3rd param
     #us_home_sale['Date'] = us_home_sale['Date'].apply(lambda y: datetime.strptime(y,'%d-%b-%y')) #convert to datetime object
+    us_home_sale['Actual'] = us_home_sale['Actual'].apply( lambda y: int(y.strip('K')) * 1000)  # conver to K to int object
     us_home_sale['Actual'] = us_home_sale['Actual'].apply(lambda y: int(y.strip('K'))*1000) #conver to K to int object
     #us_nonfarm_payroll = pd.read_csv('C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/US_NONFARM_PAYROLL(2016-2017).csv',usecols=[0,1]) #4th param
     #us_nonfarm_payroll['Date'] = us_nonfarm_payroll['Date'].apply(lambda y: datetime.strptime(y, '%d-%b-%y')) #convert to datetime object
@@ -33,7 +34,7 @@ def getdata():
     """
     tick=tick.drop_duplicates(keep=False)
     print('INFO:All data is extracted successfully')
-    us_home_sale['Actual'] = us_home_sale['Actual'].apply( lambda y: int(y.strip('K')) * 1000)  # conver to K to int object
+
 def candle_baranalysis():
     global opprice , hiprice , lowprice ,closeprice , dataset, bollupper,bollmiddle,bolllower , avg_price
     opprice=tick['Open'].astype(float).values
@@ -97,7 +98,7 @@ def parsing_learning():
     epoch=200
     batch=1000
     dropout=0.6
-    model.add(Dense(128, kernel_initializer='normal', activation='relu',input_shape=(trainX.shape[1], trainX.shape[2])))
+    model.add(Dense(48, kernel_initializer='normal', activation='relu',input_shape=(trainX.shape[1], trainX.shape[2])))
     model.add(Dropout(dropout))
     model.add(LSTM(64,recurrent_activation=
                    'relu', return_sequences=True)) #need stacked LSTM network? Eg Two LSTM layers
@@ -105,6 +106,7 @@ def parsing_learning():
     model.add(LSTM(64,return_sequences=True))
     model.add(Dropout(dropout))
     model.add(LSTM(16))
+    model.add(Dropout(dropout))
     model.add(Dense(1, kernel_initializer='normal', activation='relu'))
     model.compile(loss='mean_squared_error', optimizer='adam',metrics=['mse', 'mae', 'mape'])
     history =model.fit(trainX, trainY, epochs=epoch, batch_size=batch, verbose=2,shuffle=True)
