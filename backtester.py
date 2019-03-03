@@ -1,14 +1,13 @@
-import pandas as pd
-import numpy as np
-from datetime import datetime
 from pyalgotrade import strategy
 from pyalgotrade.technical import ma
 from pyalgotrade.technical import rsi
 from pyalgotrade.barfeed import csvfeed , yahoofeed
 from pyalgotrade.technical import cross
+from sklearn.externals import joblib
+import talib
 
 import pyalgotrade
-
+demo_cash =100000
 
 class machine_learning_strategy(strategy.BacktestingStrategy):
 
@@ -26,9 +25,13 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
             self.__shortPos = None
         else:
             assert (False)
-    def onBars(self, bars):
+    def onBars(self, bars): #amend and implement the strategy in this function
         bar = bars[self.__instrument]
         self.info(bar.getClose())
+        if self.__longPos is None: #if no long position
+            shares = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*10000))
+            self.__longPos=self.enterLong(self.__instrument,shares,True)
+
     def onExitCanceled(self, position):
         # If the exit was canceled, re-submit it.
         position.exitMarket()
@@ -52,4 +55,7 @@ def run_strategy():
     myStrategy.run()
    # print("Final portfolio value: $%.2f" % myStrategy.getBroker().getEquity())
 
-run_strategy()
+if __name__=='__main__':
+    global model
+    model=joblib.load('model.sav')
+    run_strategy()
