@@ -9,6 +9,8 @@ import talib
 import pyalgotrade
 demo_cash =100000
 
+
+
 class machine_learning_strategy(strategy.BacktestingStrategy):
 
     def __init__(self, feed,instrument ): #initializing order
@@ -29,8 +31,8 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         bar = bars[self.__instrument]
         self.info(bar.getClose())
         if self.__longPos is None: #if no long position
-            shares = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*10000))
-            self.__longPos=self.enterLong(self.__instrument,shares,True)
+            lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*10000)) #lot size is determined by the amount of cash we have in the demo
+            self.__longPos=self.enterLong(self.__instrument,lot_size,True)
 
     def onExitCanceled(self, position):
         # If the exit was canceled, re-submit it.
