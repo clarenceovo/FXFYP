@@ -24,7 +24,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         self.__longPos = None
         self.__shortPos = None
         #self.__macd =macd.MACD(feed[instrument].getPriceDataSeries())
-        self.__sma = ma.SMA(feed[instrument].getPriceDataSeries(),SMA)
+        self.__sma = ma.SMA(feed[instrument].getPriceDataSeries(),240)
         self.__bbands=bollinger.BollingerBands(feed[instrument].getPriceDataSeries(),40,2)
         self.atr = atr.ATR(feed[instrument],24)
 
@@ -65,14 +65,14 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         """
 
         currentprice=round(bar.getPrice(),6)
-        if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None : #Wait to get enough info for SMA
+        if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None : #Wait to get enough info for tech indicator
             return
         lower = round(lower, 5) #BBlower
         middle = round(middle, 5) #BBLower
         upper = round(upper, 5) #BBUpper
         atr = self.atr[-1] #ATR
-        dataset = np.array([round(bar.getClose(),5), upper, middle, lower,atr])
-        dataset = dataset.reshape((1, 1, 1))
+        dataset = np.array([round(bar.getClose(),5),self.__sma[-1], upper, middle, lower]) #recombine the array
+        dataset = dataset.reshape((1, 1, -1))
         prediction  =model.predict(dataset) #
 
         print(prediction)
