@@ -63,7 +63,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         [avg_price, sma_240, bollupper,bollmiddle, bolllower, ATR]
                 
         """
-
+        historical =[]
         currentprice=round(bar.getPrice(),6)
         if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None : #Wait to get enough info for tech indicator
             return
@@ -72,10 +72,22 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         upper = round(upper, 5) #BBUpper
         atr = self.atr[-1] #ATR
         dataset = np.array([round(bar.getClose(),5),self.__sma[-1], upper, middle, lower]) #recombine the array
-        dataset = dataset.reshape((1, 1, -1))
-        prediction  =model.predict(dataset) #
+        historical.append(dataset)
 
-        print(prediction)
+
+
+        if len(historical) ==20: #get 240 data frame
+            print('20!')
+            #dataset = dataset.reshape((1, 1, -1))
+            dataset = historical.reshape((20, 1, -1)) #create df and then reshape the dataframe
+            print(dataset)
+            prediction  =model.predict(dataset) #
+            #historical.remove(historical[0])
+            print(prediction)
+
+
+
+
         if self.__longPos is None: #if no long position
             lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*100000)) #lot size is determined by the amount of cash we have in the demo
 
@@ -109,7 +121,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         if self.__shortPos is position:
             self.__shortPos = None
 
-    def onExitOk(self, position): #exit position
+    def onExitOk(self, position): #exit all position
         execInfo = position.getExitOrder().getExecutionInfo()
 
         if self.__longPos is position:
