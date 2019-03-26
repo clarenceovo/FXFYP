@@ -7,6 +7,7 @@ from pyalgotrade.barfeed import csvfeed
 from pyalgotrade.technical import cross
 from sklearn.externals import joblib
 from pyalgotrade.technical import bollinger
+from sklearn.preprocessing import MinMaxScaler
 import talib
 import pandas as pd
 import pyalgotrade
@@ -23,10 +24,12 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         self.__instrument=instrument
         self.__longPos = None
         self.__shortPos = None
+        self.__historical = []
         #self.__macd =macd.MACD(feed[instrument].getPriceDataSeries())
         self.__sma = ma.SMA(feed[instrument].getPriceDataSeries(),240)
         self.__bbands=bollinger.BollingerBands(feed[instrument].getPriceDataSeries(),40,2)
         self.atr = atr.ATR(feed[instrument],24)
+        self.__prediction_list= []
 
     def onEnterOk(self, position):
         execInfo = position.getEntryOrder().getExecutionInfo()
@@ -58,59 +61,71 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         lower = self.__bbands.getLowerBand()[-1]
         middle = self.__bbands.getMiddleBand()[-1]
         upper = self.__bbands.getUpperBand()[-1]
-        """
-        Format of dataset in model training 
-        [avg_price, sma_240, bollupper,bollmiddle, bolllower, ATR]
-                
-        """
-        historical =[]
-        currentprice=round(bar.getPrice(),6)
-        if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None : #Wait to get enough info for tech indicator
+        currentprice=round(bar.getPrice(),5)
+
+
+        if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None  : #Wait to get enough info for tech indicator
             return
         lower = round(lower, 5) #BBlower
         middle = round(middle, 5) #BBLower
         upper = round(upper, 5) #BBUpper
         atr = self.atr[-1] #ATR
-        dataset = np.array([round(bar.getClose(),5),self.__sma[-1], upper, middle, lower]) #recombine the array
-        historical.append(dataset)
+        dataset = np.array([round(bar.getClose(),6),self.__sma[-1], upper, middle, lower]) #recombine the array
+        self.__historical.append(dataset)
 
 
-
-        if len(historical) ==20: #get 240 data frame
-            print('20!')
-            #dataset = dataset.reshape((1, 1, -1))
-            dataset = historical.reshape((20, 1, -1)) #create df and then reshape the dataframe
-            print(dataset)
+        if len(self.__historical) ==240: #get 240 data frame 5days record
+            df_dataset = pd.DataFrame(self.__historical)
+            dataset=df_dataset.values
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            dataset = scaler.fit_transform(dataset)
+            dataset = dataset.reshape((240, 1, -1)) #create df and then reshape the dataframe
             prediction  =model.predict(dataset) #
-            #historical.remove(historical[0])
-            print(prediction)
+            dataset = dataset.reshape((dataset.shape[0], dataset.shape[2]))
+            final_dataset = np.concatenate((prediction, dataset[:, 1:]), axis=1) #recombine the data
+            final_dataset = scaler.inverse_transform(final_dataset)
+            prediction_array = final_dataset[:, 0]
+            prediction = round(prediction_array[-1],5)
+            #print(f'Prediction:{prediction} Actual: {currentprice}') #latest prediction
+            self.__historical.remove(self.__historical[0])
+            self.__prediction_list.append(prediction)
 
 
+
+        try:  # ensure the record is not Null
+            x = self.__prediction_list[-1]
+            y = self.__prediction_list[-2]
+
+        except:
+            return
 
 
         if self.__longPos is None: #if no long position
             lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*100000)) #lot size is determined by the amount of cash we have in the demo
-
-            if currentprice > round(self.__sma[-1],5): #round the 7 digits
+            if self.__prediction_list[-1] > self.__prediction_list[-2]:  #strategy criteria
                 self.info(f'LONG Position ENTRY:{currentprice}')
-
                 self.__longPos = self.enterLong(self.__instrument,lot_size*1000,True)
 
-        elif currentprice < self.__sma[-1] and not self.__longPos.exitActive():  # EXIT RULE
+        elif self.__prediction_list[-1] < self.__prediction_list[-2] and not self.__longPos.exitActive():  # EXIT RULE
             self.info(f'LONG Position EXIT:{currentprice}')
             self.__longPos.exitMarket()
 
 
         if self.__shortPos is None:
             lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice()) * 100000))
-            if currentprice < round(self.__sma[-1],5):
-                self.__shortPos = self.enterShort(self.__instrument, lot_size*1000, True)
-                self.info(f'SHORT Position ENTRY:{currentprice}')
+            if self.__prediction_list[-1] < self.__prediction_list[-2]: #in down trend
+                self.__shortPos = self.enterShort(self.__instrument, lot_size*500, True)
+                #self.info(f'SHORT Position ENTRY:{currentprice}')
 
-        elif currentprice > self.__sma[-1] and not self.__shortPos.exitActive():  # EXIT RULE
-            self.info(f'SHORT Position EXIT:{currentprice}')
+        elif self.__prediction_list[-1] > self.__prediction_list[-2]and not self.__shortPos.exitActive():  # EXIT RULE
+            #self.info(f'SHORT Position EXIT:{currentprice}')
             self.__shortPos.exitMarket()
+        P_L=self.getBroker().getCash()-1000000
+        self.info(f'P/L :{P_L} ')
 
+
+
+        
     def onExitCanceled(self, position):
         # If the exit was canceled, re-submit it.
         position.exitMarket()
