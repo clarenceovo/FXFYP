@@ -15,6 +15,8 @@ demo_cash =100000
 import numpy as np
 
 
+
+
 class machine_learning_strategy(strategy.BacktestingStrategy):
 
     def __init__(self, feed,instrument ,initialCash,model): #initializing order
@@ -25,7 +27,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         self.__longPos = None
         self.__shortPos = None
         self.__historical = []
-        #self.__macd =macd.MACD(feed[instrument].getPriceDataSeries())
+        self.__macd =macd.MACD(feed[instrument].getPriceDataSeries(),24,120,48,1024) #fast ,slow ,signal
         self.__sma = ma.SMA(feed[instrument].getPriceDataSeries(),240)
         self.__bbands=bollinger.BollingerBands(feed[instrument].getPriceDataSeries(),40,2)
         self.atr = atr.ATR(feed[instrument],24)
@@ -62,7 +64,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         middle = self.__bbands.getMiddleBand()[-1]
         upper = self.__bbands.getUpperBand()[-1]
         currentprice=round(bar.getPrice(),5)
-
+        self.info(self.__macd.getHistogram())
 
         if self.__sma[-1] is None or self.__bbands.getLowerBand()[-1] is None or self.__bbands.getMiddleBand()[-1] is None or self.__bbands.getUpperBand()[-1] is None  : #Wait to get enough info for tech indicator
             return
@@ -72,7 +74,6 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         atr = self.atr[-1] #ATR
         dataset = np.array([round(bar.getClose(),6),self.__sma[-1], upper, middle, lower]) #recombine the array
         self.__historical.append(dataset)
-
 
         if len(self.__historical) ==240: #get 240 data frame 5days record
             df_dataset = pd.DataFrame(self.__historical)
@@ -85,7 +86,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
             final_dataset = np.concatenate((prediction, dataset[:, 1:]), axis=1) #recombine the data
             final_dataset = scaler.inverse_transform(final_dataset)
             prediction_array = final_dataset[:, 0]
-            prediction = round(prediction_array[-1],5)
+            prediction = round(prediction_array[-1] ,  5)
             #print(f'Prediction:{prediction} Actual: {currentprice}') #latest prediction
             self.__historical.remove(self.__historical[0])
             self.__prediction_list.append(prediction)
@@ -99,25 +100,38 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
         except:
             return
 
+        def cutlossmechanism(self):
+
+
+            return 0
 
         if self.__longPos is None: #if no long position
             lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice())*100000)) #lot size is determined by the amount of cash we have in the demo
-            if self.__prediction_list[-1] > self.__prediction_list[-2]:  #strategy criteria
+            if self.__prediction_list[-1] > self.__prediction_list[-2] and ((self.__prediction_list[-1] - self.__prediction_list[-2])>0.00100):  #strategy criteria
                 self.info(f'LONG Position ENTRY:{currentprice}')
                 self.__longPos = self.enterLong(self.__instrument,lot_size*1000,True)
+                #set sell limit and stop loss position
 
-        elif self.__prediction_list[-1] < self.__prediction_list[-2] and not self.__longPos.exitActive():  # EXIT RULE
+
+        elif self.__prediction_list[-1] < self.__prediction_list[-2] and not self.__longPos.exitActive():
             self.info(f'LONG Position EXIT:{currentprice}')
             self.__longPos.exitMarket()
 
 
+        #elif  self.__longPos.getEntryOrder() - currentprice > 0.00500: #If winning more than 500 pips , then close position
+        #        self.__longPos.exitMarket()
+
+
+
         if self.__shortPos is None:
             lot_size = int(self.getBroker().getCash() * 0.9 / ((bars[self.__instrument].getPrice()) * 100000))
-            if self.__prediction_list[-1] < self.__prediction_list[-2]: #in down trend
+
+
+            if self.__prediction_list[-1] < self.__prediction_list[-2] and ((self.__prediction_list[-2] - self.__prediction_list[-1])>0.00100): #in down trend
                 self.__shortPos = self.enterShort(self.__instrument, lot_size*500, True)
                 #self.info(f'SHORT Position ENTRY:{currentprice}')
 
-        elif self.__prediction_list[-1] > self.__prediction_list[-2]and not self.__shortPos.exitActive():  # EXIT RULE
+        elif self.__prediction_list[-1] > self.__prediction_list[-2]and not self.__shortPos.exitActive() :  # EXIT RULE
             #self.info(f'SHORT Position EXIT:{currentprice}')
             self.__shortPos.exitMarket()
         P_L=self.getBroker().getCash()-1000000
@@ -125,7 +139,7 @@ class machine_learning_strategy(strategy.BacktestingStrategy):
 
 
 
-        
+
     def onExitCanceled(self, position):
         # If the exit was canceled, re-submit it.
         position.exitMarket()
