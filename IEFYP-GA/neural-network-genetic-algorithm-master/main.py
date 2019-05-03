@@ -1,5 +1,7 @@
 """Entry point to evolving the neural network. Start here."""
 import logging
+import sys
+#sys.path.insert(0, 'C:/Users/LokFung/Desktop/IERGYr4/IEFYP/IEFYP-GA/neural-network-genetic-algorithm-master')
 from optimizer import Optimizer
 from tqdm import tqdm
 import os
@@ -14,12 +16,7 @@ logging.basicConfig(
 )
 
 def train_networks(networks, dataset, path):
-    """Train each network.
 
-    Args:
-        networks (list): Current population of networks
-        dataset (str): Dataset to use for training/evaluating
-    """
     pbar = tqdm(total=len(networks))
     for network in networks:
         network.train(dataset, path)
@@ -27,15 +24,6 @@ def train_networks(networks, dataset, path):
     pbar.close()
 
 def get_average_accuracy(networks):
-    """Get the average accuracy for a group of networks.
-
-    Args:
-        networks (list): List of networks
-
-    Returns:
-        float: The average accuracy of a population of networks.
-
-    """
     total_accuracy = 0
     for network in networks:
         total_accuracy += network.accuracy
@@ -95,10 +83,12 @@ def print_networks(networks):
 
 def main():
     """Evolve a network."""
+
+
     generations = 10  # Number of times to evole the population.
     population = 20  # Number of networks in each generation.
     dataset = 'AUDUSD60'
-    path = '/Users/oscartse/Desktop/FXFYP-master/POCtestdata/AUDUSD60.csv'
+    path = 'C:/Users/LokFung/Desktop/IERGYr4/IEFYP/POCtestdata/AUDUSD60.csv'
     nn_param_choices = {
         'nb_neurons': [64, 128, 256, 512, 768, 1024],
         'nb_layers': [1, 2, 3, 4, 5],

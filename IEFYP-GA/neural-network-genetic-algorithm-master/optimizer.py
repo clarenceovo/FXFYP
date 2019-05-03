@@ -15,18 +15,7 @@ class Optimizer():
 
     def __init__(self, nn_param_choices, retain=0.4,
                  random_select=0.1, mutate_chance=0.2):
-        """Create an optimizer.
 
-        Args:
-            nn_param_choices (dict): Possible network paremters
-            retain (float): Percentage of population to retain after
-                each generation
-            random_select (float): Probability of a rejected network
-                remaining in the population
-            mutate_chance (float): Probability a network will be
-                randomly mutated
-
-        """
         self.mutate_chance = mutate_chance
         self.random_select = random_select
         self.retain = retain
